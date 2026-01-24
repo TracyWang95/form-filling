@@ -355,47 +355,57 @@ def _generate_friendly_labels(fields: list[DetectedField]) -> list[DetectedField
                 "nearby_text": field.label_context,
             })
 
-        prompt = f"""You are analyzing form fields from a PDF with complex layout (like W-9 tax forms). For each field, generate a short, clear, user-friendly label.
+        prompt = f"""你是一个表单字段分析专家。请为每个表单字段生成简洁、清晰的**中文**标签。
 
-IMPORTANT - Understanding the nearby_text format:
-- "LEFT: ..." = text to the LEFT of the field (usually the label for that field)
-- "ABOVE: ..." = text ABOVE the field (sometimes labels, sometimes headers)
-- "RIGHT: ..." = text to the right (might be unrelated in multi-column forms)
-- "BELOW: ..." = text below the field
+## 理解 nearby_text 格式：
+- "LEFT: ..." = 字段左侧的文本（通常是标签）
+- "ABOVE: ..." = 字段上方的文本（可能是标签或标题）
+- "RIGHT: ..." = 字段右侧的文本（多栏表单中可能不相关）
+- "BELOW: ..." = 字段下方的文本
 
-CRITICAL - MULTI-PART FIELDS (SSN, EIN, Phone, Date):
-Many forms split numbers into MULTIPLE consecutive fields. You MUST identify each part separately:
+## 多部分字段识别（SSN、EIN、电话、日期）：
+许多表单会将号码拆分成多个连续字段，你必须分别识别每个部分：
 
-**Social Security Number (SSN)** - Format XXX-XX-XXXX (3 fields):
-- Look for 3 small text fields near "Social security number" text
-- Label them: "SSN Part 1 (3 digits)", "SSN Part 2 (2 digits)", "SSN Part 3 (4 digits)"
-- Use the SIZE info: narrower fields = fewer digits
+**社会安全号码 (SSN)** - 格式 XXX-XX-XXXX（3个字段）：
+- 查找"Social security number"附近的3个小文本框
+- 标签示例："社会安全号 第1部分（3位）"、"社会安全号 第2部分（2位）"、"社会安全号 第3部分（4位）"
 
-**Employer Identification Number (EIN)** - Format XX-XXXXXXX (2 fields):
-- Look for 2 text fields near "Employer identification number" text
-- Label them: "EIN Part 1 (2 digits)", "EIN Part 2 (7 digits)"
+**雇主识别号 (EIN)** - 格式 XX-XXXXXXX（2个字段）：
+- 查找"Employer identification number"附近的2个文本框
+- 标签示例："雇主识别号 第1部分（2位）"、"雇主识别号 第2部分（7位）"
 
-**How to identify multi-part fields:**
-1. Check if multiple fields have SIMILAR y-position (same row)
-2. Check if they have SIMILAR nearby_text (same label area)
-3. Check the WIDTH - smaller width = fewer digits expected
-4. Fields appearing in sequence (by x-position) are likely parts of the same number
+## 识别多部分字段的方法：
+1. 检查多个字段是否有相似的 y 坐标（同一行）
+2. 检查它们是否有相似的 nearby_text（同一标签区域）
+3. 检查宽度 - 较窄的字段 = 较少的数字
+4. 按 x 坐标顺序排列的字段可能是同一号码的各部分
 
-CRITICAL for multi-column forms (like W-9):
-- PRIORITIZE "LEFT:" text as the field label
-- Be SKEPTICAL of "RIGHT:" text - it might be from a different column
-- Look for keywords: "Name", "Address", "City", "State", "ZIP", "Social security", "Employer identification"
+## 常见字段翻译参考：
+- Name → 姓名
+- Business name → 企业名称
+- Address → 地址
+- City, state, ZIP → 城市、州、邮编
+- Exempt payee code → 豁免收款人代码
+- FATCA exemption code → FATCA豁免代码
+- Individual/sole proprietor → 个人/独资经营者
+- Corporation → 公司
+- Partnership → 合伙企业
+- LLC → 有限责任公司
+- Trust/estate → 信托/遗产
+- Account number → 账户号码
+- Signature → 签名
+- Date → 日期
 
-Guidelines:
-- Keep labels concise but DISTINGUISH parts of multi-part fields
-- For SSN/EIN, ALWAYS include "Part 1", "Part 2", etc.
-- Examples: "Full Name", "SSN Part 1 (3 digits)", "SSN Part 2 (2 digits)", "EIN Part 1 (2 digits)"
+## 要求：
+- 所有标签必须是**中文**
+- 保持标签简洁但能区分多部分字段
+- 对于 SSN/EIN，始终包含"第1部分"、"第2部分"等
 
-Fields to analyze:
+待分析的字段：
 {json.dumps(field_summaries, indent=2)}
 
-Respond with a JSON object where keys are field indices (as strings) and values are the friendly labels.
-Example: {{"0": "Full Name", "1": "SSN Part 1 (3 digits)", "2": "SSN Part 2 (2 digits)", "3": "SSN Part 3 (4 digits)", "4": "EIN Part 1 (2 digits)", "5": "EIN Part 2 (7 digits)"}}"""
+请返回 JSON 对象，键为字段索引（字符串），值为中文友好标签。
+示例：{{"0": "姓名", "1": "社会安全号 第1部分（3位）", "2": "社会安全号 第2部分（2位）", "3": "企业名称"}}"""
 
         response = client.chat.completions.create(
             model=model,
