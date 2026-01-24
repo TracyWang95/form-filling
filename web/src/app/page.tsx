@@ -151,7 +151,8 @@ export default function Home() {
     setIsAnalyzing(true);
 
     try {
-      const result = await analyzePdf(selectedFile);
+      // Pass API key to enable LLM-powered Chinese label generation
+      const result = await analyzePdf(selectedFile, deepseekApiKey || undefined);
       setFields(result.fields);
 
       // Add system message about detected fields
@@ -175,7 +176,7 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, []);
+  }, [deepseekApiKey]);
 
   // Handle clearing chat messages
   const handleClearMessages = useCallback(() => {

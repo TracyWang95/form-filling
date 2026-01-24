@@ -23,13 +23,19 @@ export async function validateApiKey(apiKey: string): Promise<{ valid: boolean; 
   return response.json();
 }
 
-export async function analyzePdf(file: File): Promise<AnalyzeResponse> {
+export async function analyzePdf(file: File, apiKey?: string): Promise<AnalyzeResponse> {
   const formData = new FormData();
   formData.append('file', file);
+
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
 
   const response = await fetch(`${API_BASE}/analyze`, {
     method: 'POST',
     body: formData,
+    headers,
   });
 
   if (!response.ok) {

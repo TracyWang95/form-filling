@@ -65,7 +65,7 @@ class FieldEdit:
     value: str | bool
 
 
-def detect_form_fields(pdf_bytes: bytes, generate_friendly_labels: bool = True) -> list[DetectedField]:
+def detect_form_fields(pdf_bytes: bytes, generate_friendly_labels: bool = True, api_key: str = None) -> list[DetectedField]:
     """
     Detect all fillable AcroForm fields in the PDF.
 
@@ -75,6 +75,7 @@ def detect_form_fields(pdf_bytes: bytes, generate_friendly_labels: bool = True) 
     Args:
         pdf_bytes: The PDF file as bytes
         generate_friendly_labels: If True, use LLM to generate clean labels
+        api_key: Optional API key for LLM (overrides environment variable)
 
     Returns:
         List of detected form fields with their metadata
@@ -118,7 +119,7 @@ def detect_form_fields(pdf_bytes: bytes, generate_friendly_labels: bool = True) 
 
     # Generate friendly labels using LLM
     if generate_friendly_labels and fields:
-        fields = _generate_friendly_labels(fields)
+        fields = _generate_friendly_labels(fields, api_key=api_key)
 
     # print(f"Detected {len(fields)} fields")
     # print(fields)
@@ -317,25 +318,30 @@ def _apply_widget_edit(widget: fitz.Widget, value: str | bool):
     widget.update()
 
 
-def _generate_friendly_labels(fields: list[DetectedField]) -> list[DetectedField]:
+def _generate_friendly_labels(fields: list[DetectedField], api_key: str = None) -> list[DetectedField]:
     """
     Use DeepSeek to generate clean, user-friendly labels for form fields.
 
     Takes the full label_context and native field names and produces
     concise, descriptive labels for display.
+    
+    Args:
+        fields: List of detected fields
+        api_key: Optional API key (overrides environment variable)
     """
     try:
         import httpx
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not api_key:
-            raise ValueError("DEEPSEEK_API_KEY not set")
+        # Use provided api_key or fall back to environment variable
+        effective_api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
+        if not effective_api_key:
+            raise ValueError("API key not provided and DEEPSEEK_API_KEY not set")
         
         base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
         model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
         
         # Create client without proxy to avoid conflicts with system proxy settings
         http_client = httpx.Client(proxy=None)
-        client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
+        client = OpenAI(api_key=effective_api_key, base_url=base_url, http_client=http_client)
 
         # Prepare field summaries for the LLM
         field_summaries = []

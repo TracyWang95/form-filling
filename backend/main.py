@@ -36,7 +36,7 @@ except ImportError:
     # python-dotenv not installed, skip .env loading
     pass
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,7 +125,10 @@ class FillRequest(BaseModel):
 # ============================================================================
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_pdf(file: UploadFile = File(...)):
+async def analyze_pdf(
+    file: UploadFile = File(...),
+    x_api_key: str = Header(None, alias="X-API-Key")
+):
     """
     Analyze a PDF to detect fillable form fields.
     
@@ -135,6 +138,8 @@ async def analyze_pdf(file: UploadFile = File(...)):
     - label_context: Nearby text that describes the field
     - current_value: Any existing value in the field
     - options: Available options for dropdown/radio fields
+    
+    Pass X-API-Key header to enable LLM-powered Chinese label generation.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(400, "File must be a PDF")
@@ -142,7 +147,7 @@ async def analyze_pdf(file: UploadFile = File(...)):
     pdf_bytes = await file.read()
     
     try:
-        fields = detect_form_fields(pdf_bytes)
+        fields = detect_form_fields(pdf_bytes, api_key=x_api_key)
     except Exception as e:
         raise HTTPException(500, f"Failed to analyze PDF: {str(e)}")
     
