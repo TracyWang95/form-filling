@@ -42,16 +42,24 @@ _processor = None
 def _convert_audio_to_wav(input_path: str, output_path: str) -> bool:
     """Convert audio file to WAV format using ffmpeg."""
     try:
-        subprocess.run([
+        # Normalize paths for Windows
+        input_path = os.path.normpath(input_path)
+        output_path = os.path.normpath(output_path)
+        
+        result = subprocess.run([
             'ffmpeg', '-y', '-i', input_path,
             '-ar', '16000',  # 16kHz sample rate
             '-ac', '1',      # mono
             '-f', 'wav',
             output_path
-        ], check=True, capture_output=True)
+        ], check=True, capture_output=True, text=True)
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    except subprocess.CalledProcessError as e:
         print(f"[ASR] ffmpeg conversion failed: {e}")
+        print(f"[ASR] ffmpeg stderr: {e.stderr}")
+        return False
+    except FileNotFoundError as e:
+        print(f"[ASR] ffmpeg not found: {e}")
         return False
 
 
@@ -97,29 +105,45 @@ async def transcribe_audio(audio_path: str) -> str:
         Transcribed text
     """
     import torch
+    import soundfile as sf
     
     if not GLM_ASR_AVAILABLE:
         raise RuntimeError(GLM_ASR_ERROR)
     
-    # Convert to WAV if needed
+    # Normalize path for Windows
+    audio_path = os.path.normpath(audio_path)
     audio_path = str(Path(audio_path).resolve())
-    wav_path = audio_path
+    wav_path = None
     
+    print(f"[ASR] Input audio path: {audio_path}")
+    
+    # Convert to WAV if needed
     if not audio_path.lower().endswith('.wav'):
-        wav_path = audio_path + '.wav'
+        # Create wav in same directory as input to avoid path issues
+        wav_path = audio_path.rsplit('.', 1)[0] + '_converted.wav'
+        print(f"[ASR] Converting to WAV: {wav_path}")
         if not _convert_audio_to_wav(audio_path, wav_path):
             raise RuntimeError("音频格式转换失败，请确保已安装 ffmpeg")
+        process_path = wav_path
+    else:
+        process_path = audio_path
     
     try:
         model, processor = _load_model()
         
-        # Official API from zhipu docs
-        inputs = processor.apply_transcription_request(wav_path)
+        # Load audio using soundfile (more reliable on Windows)
+        print(f"[ASR] Loading audio file: {process_path}")
+        audio_data, sample_rate = sf.read(process_path)
+        print(f"[ASR] Audio loaded: {len(audio_data)} samples, {sample_rate}Hz")
+        
+        # Official API from zhipu docs - pass audio array directly
+        inputs = processor.apply_transcription_request(audio_data)
         
         # Move inputs to model device and dtype
         inputs = inputs.to(model.device, dtype=model.dtype)
         
         # Generate transcription
+        print(f"[ASR] Generating transcription...")
         with torch.no_grad():
             outputs = model.generate(**inputs, do_sample=False, max_new_tokens=500)
         
@@ -129,12 +153,16 @@ async def transcribe_audio(audio_path: str) -> str:
             skip_special_tokens=True
         )[0]
         
+        print(f"[ASR] Transcription: {transcription}")
         return transcription.strip()
         
     finally:
         # Clean up temporary WAV file
-        if wav_path != audio_path and os.path.exists(wav_path):
-            os.remove(wav_path)
+        if wav_path and os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except Exception as e:
+                print(f"[ASR] Failed to remove temp file: {e}")
 
 
 def get_asr_status() -> dict:
